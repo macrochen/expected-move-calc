@@ -3,7 +3,8 @@ export function calculateExpectedMove(
   callIv: number,
   putIv: number,
   expiryDateStr: string,
-  market: 'us' | 'hk' | 'a'
+  market: 'us' | 'hk' | 'a',
+  forwardPrice?: number
 ) {
   if (isNaN(price) || price <= 0) throw new Error("标的价格必须为正数");
   if (isNaN(callIv) || callIv < 0) throw new Error("看涨 IV 必须为非负数");
@@ -55,18 +56,24 @@ export function calculateExpectedMove(
   // Time factor (Square root of time)
   const timeFactor = Math.sqrt(daysToExpiry / 365.0);
   
+  // Determine center price for calculations (use forward price if provided)
+  const centerPrice = (forwardPrice !== undefined && !isNaN(forwardPrice) && forwardPrice > 0) 
+    ? forwardPrice 
+    : price;
+  
   // Asymmetric Expected Move
-  const moveUpMoney = price * (callIv / 100) * timeFactor;
-  const moveDownMoney = price * (putIv / 100) * timeFactor;
+  const moveUpMoney = centerPrice * (callIv / 100) * timeFactor;
+  const moveDownMoney = centerPrice * (putIv / 100) * timeFactor;
   
-  const moveUpPercent = (moveUpMoney / price) * 100;
-  const moveDownPercent = (moveDownMoney / price) * 100;
+  const moveUpPercent = (moveUpMoney / centerPrice) * 100;
+  const moveDownPercent = (moveDownMoney / centerPrice) * 100;
   
-  const expectedHigh = price + moveUpMoney;
-  const expectedLow = price - moveDownMoney;
+  const expectedHigh = centerPrice + moveUpMoney;
+  const expectedLow = centerPrice - moveDownMoney;
 
   return {
     currentPrice: price,
+    centerPrice,
     daysToExpiry,
     moveUpPercent,
     moveDownPercent,

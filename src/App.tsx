@@ -4,6 +4,7 @@ import { calculateExpectedMove } from './lib/calculator';
 
 export default function App() {
   const [price, setPrice] = useState<string>('');
+  const [forwardPrice, setForwardPrice] = useState<string>('');
   const [callIv, setCallIv] = useState<string>('');
   const [putIv, setPutIv] = useState<string>('');
   const [market, setMarket] = useState<'us' | 'hk' | 'a'>('us');
@@ -30,6 +31,7 @@ export default function App() {
 
   const handleClear = () => {
     setPrice('');
+    setForwardPrice('');
     setCallIv('');
     setPutIv('');
     setExpiryDate('');
@@ -43,12 +45,13 @@ export default function App() {
         parseFloat(callIv || putIv),
         parseFloat(putIv || callIv),
         expiryDate,
-        market
+        market,
+        forwardPrice ? parseFloat(forwardPrice) : undefined
       );
     } catch (err: any) {
       return { error: err.message };
     }
-  }, [price, callIv, putIv, expiryDate, market]);
+  }, [price, callIv, putIv, expiryDate, market, forwardPrice]);
 
   return (
     <div className="h-dvh bg-zinc-950 text-zinc-50 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] flex flex-col max-w-md mx-auto font-sans">
@@ -99,6 +102,21 @@ export default function App() {
           />
         </div>
 
+        <div className="flex items-center justify-between">
+          <label className="text-zinc-400 text-sm">远期/ATM价格 <span className="text-zinc-600 text-xs">(选填)</span></label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={forwardPrice}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (/^\d*\.?\d*$/.test(val)) setForwardPrice(val);
+            }}
+            onFocus={(e) => e.target.select()}
+            placeholder="同标的价格"
+            className="w-32 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-right text-white focus:border-blue-500 outline-none transition-colors"
+          />
+        </div>
         <div className="flex items-center justify-between">
           <label className="text-zinc-400 text-sm">隐含波动率 (%)</label>
           <div className="flex gap-2 w-40">
