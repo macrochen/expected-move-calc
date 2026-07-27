@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         预期波动计算器 (Delta ATM 标定 + 远期价格修正 + UI修复)
+// @name         预期波动计算器 (严格校验熔断修复版)
 // @namespace    http://tampermonkey.net/
-// @version      1.5
-// @description  利用 0.5 Delta 定位远期期权 ATM 行权价，适配最新 Finviz DOM
+// @version      1.7
+// @description  修复视图检测逻辑，锚定核心希腊字母，避免缩写导致的误杀熔断
 // @match        *://finviz.com/stock.ashx*
 // @match        *://finviz.com/stock*
 // @match        *://*.finviz.com/stock*
@@ -14,8 +14,8 @@
 
     function calculateExpectedMove(price, callIv, putIv, expiryDateStr, market = 'us', forwardPrice = null) {
         if (isNaN(price) || price <= 0) throw new Error("标的价格必须为正数");
-        if (isNaN(callIv) || callIv < 0) throw new Error("看涨 IV 必须为非负数");
-        if (isNaN(putIv) || putIv < 0) throw new Error("看跌 IV 必须为非负数");
+        if (isNaN(callIv) || callIv <= 0) throw new Error("看涨 IV 必须为大于0的正数");
+        if (isNaN(putIv) || putIv <= 0) throw new Error("看跌 IV 必须为大于0的正数");
         if (!expiryDateStr) throw new Error("请输入到期日");
 
         const nowUtc = new Date();
@@ -92,14 +92,18 @@
 
         button.addEventListener('click', () => {
             try {
-                // 1. 获取正股价格
+                // 【修复核心】：锚定期权独有的多个希腊字母特征，防范页面文案缩写
+                const pageText = document.body.innerText;
+                if (!pageText.includes("Delta") || !pageText.includes("Gamma") || !pageText.includes("Vega")) {
+                    throw new Error("当前处于 'Prices' 视图无法获取数据，请在期权链上方点击切换到 'Volatility & Greeks' 选项卡！");
+                }
+
                 const priceMatch = document.body.innerText.match(/Last Close\s*(\d+\.\d+)/);
                 if (!priceMatch) throw new Error("无法获取当前正股价格，请检查页面内容");
                 const price = parseFloat(priceMatch[1]);
 
-                // 2. 修复后的到期日抓取逻辑
                 const expiryButton = document.querySelector('button[aria-label="Expiry select"]');
-                if (!expiryButton) throw new Error("无法定位到期日组件(aria-label='Expiry select')，请检查页面DOM结构");
+                if (!expiryButton) throw new Error("无法定位到期日组件，请检查页面DOM结构");
 
                 const expirySpan = expiryButton.querySelector('span');
                 if (!expirySpan) throw new Error("定位到组件，但无法提取日期文本");
@@ -109,7 +113,6 @@
                 if (!month || !day || !year) throw new Error(`日期格式解析失败: ${rawExpiry}`);
                 const expiryDateStr = `${year}${month}${day}`;
 
-                // 3. 定位 ATM
                 let atmStrike = 0;
                 let callIv = 0;
                 let putIv = 0;
@@ -138,13 +141,17 @@
                     }
                 });
 
-                if (minDeltaDiff === Infinity) throw new Error("无法定位期权数据行，请确认页面已完全加载");
-                if (isNaN(callIv) || isNaN(putIv)) throw new Error(`成功定位 Strike ${atmStrike}，但 IV 解析失败`);
+                if (minDeltaDiff === Infinity) throw new Error("DOM 遍历未找到有效期权行，请确认表格已完全渲染");
 
-                // 4. 执行计算
+                if (atmCallDelta < 0.2 || atmCallDelta > 0.8) {
+                    throw new Error(`抓取到的 Delta (${atmCallDelta}) 偏离正常极值，存在解析错位。请确认页面结构是否发生改变。`);
+                }
+                if (isNaN(callIv) || isNaN(putIv) || callIv <= 0 || putIv <= 0) {
+                    throw new Error(`行权价 ${atmStrike} 对应的 IV 数据提取异常 (C: ${callIv}%, P: ${putIv}%)，禁止计算。`);
+                }
+
                 const res = calculateExpectedMove(price, callIv, putIv, expiryDateStr, 'us', atmStrike);
 
-                // 5. 渲染结果
                 resultBox.style.display = 'block';
                 resultBox.innerHTML = `
                     <div style="margin-bottom: 8px; border-bottom: 1px solid #374151; padding-bottom: 8px;">
@@ -158,7 +165,7 @@
                 `;
             } catch (err) {
                 resultBox.style.display = 'block';
-                resultBox.innerHTML = `<span style="color: #ef4444;">计算出错: ${err.message}</span>`;
+                resultBox.innerHTML = `<span style="color: #ef4444; font-weight: bold;">❌ 错误阻断:</span> <br/><span style="color: #fca5a5;">${err.message}</span>`;
             }
         });
 
