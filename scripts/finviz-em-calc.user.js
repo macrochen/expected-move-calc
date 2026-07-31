@@ -227,15 +227,15 @@
                         const strikeVal = parseFloat(tds[8].innerText.trim());
                         if (!isNaN(strikeVal)) {
                             // 先清除旧的高亮样式（防重复计算）
-                            tr.style.outline = '';
-                            tr.style.backgroundColor = '';
+                            strikeTd.style.outline = '';
+                            strikeTd.style.backgroundColor = '';
                             
                             if (Math.abs(strikeVal - targetHighStrike) < 0.0001) {
-                                tr.style.outline = '2px dashed #10b981';
-                                tr.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+                                strikeTd.style.outline = '2px solid #10b981';
+                                strikeTd.style.outlineOffset = '-2px';
                             } else if (Math.abs(strikeVal - targetLowStrike) < 0.0001) {
-                                tr.style.outline = '2px dashed #ef4444';
-                                tr.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                                strikeTd.style.outline = '2px solid #ef4444';
+                                strikeTd.style.outlineOffset = '-2px';
                             }
                         }
                     }

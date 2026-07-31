@@ -225,18 +225,15 @@
 
                                 const { high, low } = window.__emCalcHighlight;
                                 if (Math.abs(rowStrike - high) < 0.0001) {
-                                    row.style.outline = '2px dashed #10b981';
-                                    row.style.outlineOffset = '-2px';
-                                    row.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+                                    strikeDiv.style.outline = '2px solid #10b981';
+                                    strikeDiv.style.outlineOffset = '-2px';
                                 } else if (Math.abs(rowStrike - low) < 0.0001) {
-                                    row.style.outline = '2px dashed #ef4444';
-                                    row.style.outlineOffset = '-2px';
-                                    row.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                                    strikeDiv.style.outline = '2px solid #ef4444';
+                                    strikeDiv.style.outlineOffset = '-2px';
                                 } else {
-                                    if (row.style.outline) {
-                                        row.style.outline = '';
-                                        row.style.outlineOffset = '';
-                                        row.style.backgroundColor = '';
+                                    if (strikeDiv.style.outline) {
+                                        strikeDiv.style.outline = '';
+                                        strikeDiv.style.outlineOffset = '';
                                     }
                                 }
                             }
