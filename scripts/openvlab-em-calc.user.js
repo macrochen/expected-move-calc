@@ -162,12 +162,10 @@
 
                     const strikeDiff = Math.abs(rowStrike - price);
                     
-                    // 寻找最接近现价的平值期权
                     if (strikeDiff < minStrikeDiff) {
                         minStrikeDiff = strikeDiff;
                         atmStrike = rowStrike;
 
-                        // 提取隐波 (OpenVlab的隐波列带有 .italic 类名，且有 text-[var(--vlab-iv)] 属性)
                         const callIvEl = callGrid.querySelector('.italic');
                         const putIvEl = putGrid.querySelector('.italic');
 
@@ -185,8 +183,7 @@
 
                 const res = calculateExpectedMove(price, callIv, putIv, daysToExpiry);
 
-                // --- 寻找最接近预期的实际行权价并高亮 ---
-                let interval = 0;
+                // --- 寻找最接近预期且保守(向平值收敛)的实际行权价并高亮 ---
                 let strikes = [];
                 rows.forEach(row => {
                     if (row.children.length >= 3) {
@@ -194,19 +191,38 @@
                         if (!isNaN(s)) strikes.push(s);
                     }
                 });
-                strikes.sort((a,b) => a - b);
-                for(let i=1; i<strikes.length; i++) {
-                    let diff = strikes[i] - strikes[i-1];
-                    if (diff > 0.001) {
-                        interval = interval === 0 ? diff : Math.min(interval, diff);
+                strikes = [...new Set(strikes)].sort((a, b) => a - b);
+                
+                let targetHighStrike = res.expectedHigh;
+                let targetLowStrike = res.expectedLow;
+                
+                if (strikes.length > 0) {
+                    const minS = strikes[0];
+                    const maxS = strikes[strikes.length - 1];
+                    
+                    // 计算上界 (向内收敛，即找小于等于 expectedHigh 的最大行权价)
+                    if (res.expectedHigh >= minS && res.expectedHigh <= maxS) {
+                        const valid = strikes.filter(s => s <= res.expectedHigh);
+                        if (valid.length > 0) targetHighStrike = valid[valid.length - 1];
+                    } else if (res.expectedHigh > maxS) {
+                        let step = strikes.length >= 2 ? strikes[strikes.length-1] - strikes[strikes.length-2] : 0.1;
+                        let ex = maxS;
+                        while (ex <= res.expectedHigh) ex += step;
+                        targetHighStrike = ex - step;
+                    }
+                    
+                    // 计算下界 (向内收敛，即找大于等于 expectedLow 的最小行权价)
+                    if (res.expectedLow >= minS && res.expectedLow <= maxS) {
+                        const valid = strikes.filter(s => s >= res.expectedLow);
+                        if (valid.length > 0) targetLowStrike = valid[0];
+                    } else if (res.expectedLow < minS) {
+                        let step = strikes.length >= 2 ? strikes[1] - strikes[0] : 0.1;
+                        let ex = minS;
+                        while (ex >= res.expectedLow) ex -= step;
+                        targetLowStrike = ex + step;
                     }
                 }
-                if (interval === 0) interval = price * 0.01; // fallback
 
-                const targetHighStrike = atmStrike + Math.round((res.expectedHigh - atmStrike) / interval) * interval;
-                const targetLowStrike = atmStrike + Math.round((res.expectedLow - atmStrike) / interval) * interval;
-
-                // 挂载到全局变量供定时器持续监控虚拟列表
                 window.__emCalcHighlight = {
                     high: targetHighStrike,
                     low: targetLowStrike
@@ -251,8 +267,8 @@
                         <div style="color: #60a5fa;"><strong>平值锚定 (ATM):</strong> ${atmStrike.toFixed(priceDecimals)}</div>
                         <div><strong>平值隐波:</strong> 认购(C) ${callIv.toFixed(2)}% ｜ 认沽(P) ${putIv.toFixed(2)}%</div>
                     </div>
-                    <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(priceDecimals)} (-${res.moveDownMoney.toFixed(priceDecimals)}) <span style="font-size: 11px; opacity: 0.8; margin-left: 4px;">🎯 锁定: ${targetLowStrike.toFixed(priceDecimals)}</span></div>
-                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(priceDecimals)} (+${res.moveUpMoney.toFixed(priceDecimals)}) <span style="font-size: 11px; opacity: 0.8; margin-left: 4px;">🎯 锁定: ${targetHighStrike.toFixed(priceDecimals)}</span></div>
+                    <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(priceDecimals)} (-${res.moveDownMoney.toFixed(priceDecimals)})</div>
+                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(priceDecimals)} (+${res.moveUpMoney.toFixed(priceDecimals)})</div>
                 `;
             } catch (err) {
                 resultBox.style.display = 'block';

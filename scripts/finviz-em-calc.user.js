@@ -199,8 +199,7 @@
 
                 const res = calculateExpectedMove(price, callIv, putIv, expiryDateStr, 'us', atmStrike);
 
-                // --- 寻找最接近预期的实际行权价并高亮 ---
-                let interval = 0;
+                // --- 寻找最接近预期且保守(向平值收敛)的实际行权价并高亮 ---
                 let strikes = [];
                 trs.forEach(tr => {
                     const tds = tr.querySelectorAll('td');
@@ -209,24 +208,42 @@
                         if (!isNaN(s)) strikes.push(s);
                     }
                 });
-                strikes.sort((a,b) => a - b);
-                for(let i=1; i<strikes.length; i++) {
-                    let diff = strikes[i] - strikes[i-1];
-                    if (diff > 0.001) {
-                        interval = interval === 0 ? diff : Math.min(interval, diff);
+                strikes = [...new Set(strikes)].sort((a, b) => a - b);
+                
+                let targetHighStrike = res.expectedHigh;
+                let targetLowStrike = res.expectedLow;
+                
+                if (strikes.length > 0) {
+                    const minS = strikes[0];
+                    const maxS = strikes[strikes.length - 1];
+                    
+                    if (res.expectedHigh >= minS && res.expectedHigh <= maxS) {
+                        const valid = strikes.filter(s => s <= res.expectedHigh);
+                        if (valid.length > 0) targetHighStrike = valid[valid.length - 1];
+                    } else if (res.expectedHigh > maxS) {
+                        let step = strikes.length >= 2 ? strikes[strikes.length-1] - strikes[strikes.length-2] : 0.1;
+                        let ex = maxS;
+                        while (ex <= res.expectedHigh) ex += step;
+                        targetHighStrike = ex - step;
+                    }
+                    
+                    if (res.expectedLow >= minS && res.expectedLow <= maxS) {
+                        const valid = strikes.filter(s => s >= res.expectedLow);
+                        if (valid.length > 0) targetLowStrike = valid[0];
+                    } else if (res.expectedLow < minS) {
+                        let step = strikes.length >= 2 ? strikes[1] - strikes[0] : 0.1;
+                        let ex = minS;
+                        while (ex >= res.expectedLow) ex -= step;
+                        targetLowStrike = ex + step;
                     }
                 }
-                if (interval === 0) interval = price * 0.01; // fallback
-
-                const targetHighStrike = atmStrike + Math.round((res.expectedHigh - atmStrike) / interval) * interval;
-                const targetLowStrike = atmStrike + Math.round((res.expectedLow - atmStrike) / interval) * interval;
 
                 trs.forEach(tr => {
                     const tds = tr.querySelectorAll('td');
                     if (tds.length >= 17) {
-                        const strikeVal = parseFloat(tds[8].innerText.trim());
+                        const strikeTd = tds[8];
+                        const strikeVal = parseFloat(strikeTd.innerText.trim());
                         if (!isNaN(strikeVal)) {
-                            // 先清除旧的高亮样式（防重复计算）
                             strikeTd.style.outline = '';
                             strikeTd.style.backgroundColor = '';
                             
@@ -249,8 +266,8 @@
                         <div style="color: #60a5fa;"><strong>远期中心点 (ATM):</strong> ${atmStrike.toFixed(2)} (Delta: ${atmCallDelta.toFixed(4)})</div>
                         <div><strong>ATM IV:</strong> C: ${callIv.toFixed(2)}% | P: ${putIv.toFixed(2)}%</div>
                     </div>
-                    <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(2)} (-${res.moveDownMoney.toFixed(2)}) <span style="font-size: 11px; opacity: 0.8; margin-left: 4px;">🎯 锁定: ${targetLowStrike.toFixed(2)}</span></div>
-                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(2)} (+${res.moveUpMoney.toFixed(2)}) <span style="font-size: 11px; opacity: 0.8; margin-left: 4px;">🎯 锁定: ${targetHighStrike.toFixed(2)}</span></div>
+                    <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(2)} (-${res.moveDownMoney.toFixed(2)})</div>
+                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(2)} (+${res.moveUpMoney.toFixed(2)})</div>
                 `;
             } catch (err) {
                 resultBox.style.display = 'block';
