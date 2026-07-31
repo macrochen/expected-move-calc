@@ -39,8 +39,55 @@
             position: fixed; bottom: 30px; right: 30px; z-index: 99999;
             font-family: Arial, sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             border-radius: 8px; background: #1e2024; color: #d1d5db;
-            border: 1px solid #374151; padding: 16px; min-width: 280px;
+            border: 1px solid #374151; width: 280px; overflow: hidden;
         `;
+
+        const header = document.createElement('div');
+        header.style.cssText = `
+            padding: 8px 12px; background: #374151; color: #9ca3af; 
+            font-size: 12px; font-weight: bold; cursor: move; 
+            display: flex; justify-content: space-between; align-items: center;
+            user-select: none;
+        `;
+        header.innerHTML = `<span>预期波动计算器</span><span id="em-calc-toggle" style="cursor:pointer; padding: 0 4px;" title="折叠/展开">—</span>`;
+
+        let isDragging = false;
+        let currentX = 0, currentY = 0, initialX = 0, initialY = 0, xOffset = 0, yOffset = 0;
+
+        header.addEventListener('mousedown', (e) => {
+            if (e.target.id === 'em-calc-toggle') return;
+            initialX = e.clientX - xOffset;
+            initialY = e.clientY - yOffset;
+            isDragging = true;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            currentX = e.clientX - initialX;
+            currentY = e.clientY - initialY;
+            xOffset = currentX;
+            yOffset = currentY;
+            container.style.transform = \`translate3d(\${currentX}px, \${currentY}px, 0)\`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        const contentBox = document.createElement('div');
+        contentBox.id = 'em-calc-content';
+        contentBox.style.cssText = 'padding: 16px;';
+
+        header.querySelector('#em-calc-toggle').addEventListener('click', (e) => {
+            if (contentBox.style.display === 'none') {
+                contentBox.style.display = 'block';
+                e.target.innerText = '—';
+            } else {
+                contentBox.style.display = 'none';
+                e.target.innerText = '□';
+            }
+        });
 
         const button = document.createElement('button');
         button.innerText = '计算当前页面预期波动';
@@ -158,8 +205,10 @@
             }
         });
 
-        container.appendChild(button);
-        container.appendChild(resultBox);
+        contentBox.appendChild(button);
+        contentBox.appendChild(resultBox);
+        container.appendChild(header);
+        container.appendChild(contentBox);
         document.body.appendChild(container);
     }
 
