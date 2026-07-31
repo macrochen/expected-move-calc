@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         预期波动计算器 (断点穿透修复版)
+// @name         预期波动计算器 (默认展开版)
 // @namespace    http://tampermonkey.net/
-// @version      2.1
-// @description  修复中间插入行导致的数据截断问题
+// @version      2.3
+// @description  修复千分位解析问题，并将计算器面板设置为默认展开状态
 // @match        *://finviz.com/stock.ashx*
 // @match        *://finviz.com/stock*
 // @match        *://*.finviz.com/stock*
@@ -70,7 +70,8 @@
             font-size: 12px; font-weight: bold; cursor: move;
             display: flex; justify-content: space-between; align-items: center; user-select: none;
         `;
-        header.innerHTML = `<span>预期波动计算器</span><span id="em-calc-toggle" style="cursor:pointer; padding: 0 4px;" title="展开/折叠">□</span>`;
+        // 调整默认图标为折叠提示符号
+        header.innerHTML = `<span>预期波动计算器</span><span id="em-calc-toggle" style="cursor:pointer; padding: 0 4px;" title="展开/折叠">—</span>`;
 
         let isDragging = false;
         let currentX = 0, currentY = 0, initialX = 0, initialY = 0, xOffset = 0, yOffset = 0;
@@ -96,7 +97,8 @@
 
         const contentBox = document.createElement('div');
         contentBox.id = 'em-calc-content';
-        contentBox.style.cssText = 'padding: 16px; display: none;';
+        // 移除 display: none，默认展示面板
+        contentBox.style.cssText = 'padding: 16px; display: block;';
 
         header.querySelector('#em-calc-toggle').addEventListener('click', (e) => {
             if (contentBox.style.display === 'none') {
@@ -139,7 +141,6 @@
                             const baselineLength = cells.length;
                             for (let j = i + 1; j < rows.length; j++) {
                                 const dataCells = rows[j].querySelectorAll('td, th');
-                                // 【核心修复】：移除 break，改用静默跳过机制，强行穿透中间的“现价隔离带”
                                 if (dataCells.length === baselineLength) {
                                     dataRows.push(dataCells);
                                 }
@@ -155,7 +156,7 @@
 
                 const priceMatch = document.body.innerText.match(/Last Close\s*(\d+\.\d+)/);
                 if (!priceMatch) throw new Error("无法获取当前正股价格，请检查页面内容");
-                const price = parseFloat(priceMatch[1]);
+                const price = parseFloat(priceMatch[1].replace(/,/g, ''));
 
                 const expiryButton = document.querySelector('button[aria-label="Expiry select"]');
                 if (!expiryButton) throw new Error("无法定位到期日组件，请检查页面DOM结构");
@@ -171,7 +172,8 @@
                 let atmStrike = 0, callIv = 0, putIv = 0, atmCallDelta = 0, minDeltaDiff = Infinity;
 
                 dataRows.forEach(tds => {
-                    const strikeVal = parseFloat(tds[strikeIdx].textContent.trim());
+                    const strikeText = tds[strikeIdx].textContent.replace(/,/g, '').trim();
+                    const strikeVal = parseFloat(strikeText);
                     const currentCallDelta = parseFloat(tds[callDeltaIdx].textContent.trim());
 
                     if (!isNaN(strikeVal) && !isNaN(currentCallDelta)) {
@@ -180,8 +182,8 @@
                             minDeltaDiff = deltaDiff;
                             atmStrike = strikeVal;
                             atmCallDelta = currentCallDelta;
-                            callIv = parseFloat(tds[callIvIdx].textContent.replace('%', ''));
-                            putIv = parseFloat(tds[putIvIdx].textContent.replace('%', ''));
+                            callIv = parseFloat(tds[callIvIdx].textContent.replace('%', '').trim());
+                            putIv = parseFloat(tds[putIvIdx].textContent.replace('%', '').trim());
                         }
                     }
                 });
@@ -199,7 +201,8 @@
 
                 let strikes = [];
                 dataRows.forEach(tds => {
-                    const s = parseFloat(tds[strikeIdx].textContent.trim());
+                    const strikeText = tds[strikeIdx].textContent.replace(/,/g, '').trim();
+                    const s = parseFloat(strikeText);
                     if (!isNaN(s)) strikes.push(s);
                 });
                 strikes.sort((a,b) => a - b);
@@ -222,7 +225,8 @@
 
                 dataRows.forEach(tds => {
                     const strikeTd = tds[strikeIdx];
-                    const strikeVal = parseFloat(strikeTd.textContent.trim());
+                    const strikeText = strikeTd.textContent.replace(/,/g, '').trim();
+                    const strikeVal = parseFloat(strikeText);
                     if (!isNaN(strikeVal)) {
                         strikeTd.style.outline = '';
                         strikeTd.style.backgroundColor = '';
