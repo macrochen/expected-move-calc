@@ -98,7 +98,7 @@
             currentY = e.clientY - initialY;
             xOffset = currentX;
             yOffset = currentY;
-            container.style.transform = \`translate3d(\${currentX}px, \${currentY}px, 0)\`;
+            container.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
         });
 
         document.addEventListener('mouseup', () => {
