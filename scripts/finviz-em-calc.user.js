@@ -207,8 +207,8 @@
                         <div style="color: #60a5fa;"><strong>远期中心点 (ATM):</strong> ${atmStrike.toFixed(2)} (Delta: ${atmCallDelta.toFixed(4)})</div>
                         <div><strong>ATM IV:</strong> C: ${callIv.toFixed(2)}% | P: ${putIv.toFixed(2)}%</div>
                     </div>
-                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(2)} (+${res.moveUpMoney.toFixed(2)})</div>
                     <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(2)} (-${res.moveDownMoney.toFixed(2)})</div>
+                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(2)} (+${res.moveUpMoney.toFixed(2)})</div>
                 `;
             } catch (err) {
                 resultBox.style.display = 'block';

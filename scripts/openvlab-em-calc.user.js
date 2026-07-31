@@ -196,8 +196,8 @@
                         <div style="color: #60a5fa;"><strong>平值锚定 (ATM):</strong> ${atmStrike.toFixed(priceDecimals)}</div>
                         <div><strong>平值隐波:</strong> 认购(C) ${callIv.toFixed(2)}% ｜ 认沽(P) ${putIv.toFixed(2)}%</div>
                     </div>
-                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(priceDecimals)} (+${res.moveUpMoney.toFixed(priceDecimals)})</div>
                     <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(priceDecimals)} (-${res.moveDownMoney.toFixed(priceDecimals)})</div>
+                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(priceDecimals)} (+${res.moveUpMoney.toFixed(priceDecimals)})</div>
                 `;
             } catch (err) {
                 resultBox.style.display = 'block';
