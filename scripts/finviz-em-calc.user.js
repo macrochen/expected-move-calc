@@ -79,7 +79,7 @@
             display: flex; justify-content: space-between; align-items: center;
             user-select: none;
         `;
-        header.innerHTML = `<span>预期波动计算器</span><span id="em-calc-toggle" style="cursor:pointer; padding: 0 4px;" title="折叠/展开">—</span>`;
+        header.innerHTML = `<span>预期波动计算器</span><span id="em-calc-toggle" style="cursor:pointer; padding: 0 4px;" title="展开/折叠">□</span>`;
 
         let isDragging = false;
         let currentX = 0, currentY = 0, initialX = 0, initialY = 0, xOffset = 0, yOffset = 0;
@@ -107,7 +107,7 @@
 
         const contentBox = document.createElement('div');
         contentBox.id = 'em-calc-content';
-        contentBox.style.cssText = 'padding: 16px;';
+        contentBox.style.cssText = 'padding: 16px; display: none;';
 
         header.querySelector('#em-calc-toggle').addEventListener('click', (e) => {
             if (contentBox.style.display === 'none') {
