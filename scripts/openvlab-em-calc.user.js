@@ -184,8 +184,66 @@
                 }
 
                 const res = calculateExpectedMove(price, callIv, putIv, daysToExpiry);
+
+                // --- 寻找最接近预期的实际行权价并高亮 ---
+                let interval = 0;
+                let strikes = [];
+                rows.forEach(row => {
+                    if (row.children.length >= 3) {
+                        const s = parseFloat(row.children[1].innerText.trim());
+                        if (!isNaN(s)) strikes.push(s);
+                    }
+                });
+                strikes.sort((a,b) => a - b);
+                for(let i=1; i<strikes.length; i++) {
+                    let diff = strikes[i] - strikes[i-1];
+                    if (diff > 0.001) {
+                        interval = interval === 0 ? diff : Math.min(interval, diff);
+                    }
+                }
+                if (interval === 0) interval = price * 0.01; // fallback
+
+                const targetHighStrike = atmStrike + Math.round((res.expectedHigh - atmStrike) / interval) * interval;
+                const targetLowStrike = atmStrike + Math.round((res.expectedLow - atmStrike) / interval) * interval;
+
+                // 挂载到全局变量供定时器持续监控虚拟列表
+                window.__emCalcHighlight = {
+                    high: targetHighStrike,
+                    low: targetLowStrike
+                };
+
+                if (!window.__emCalcInterval) {
+                    window.__emCalcInterval = setInterval(() => {
+                        if (!window.__emCalcHighlight) return;
+                        const vRows = document.querySelectorAll('div[data-react-window-index]');
+                        vRows.forEach(row => {
+                            if (row.children.length >= 3) {
+                                const strikeDiv = row.children[1];
+                                if (!strikeDiv) return;
+                                const rowStrike = parseFloat(strikeDiv.innerText.trim());
+                                if (isNaN(rowStrike)) return;
+
+                                const { high, low } = window.__emCalcHighlight;
+                                if (Math.abs(rowStrike - high) < 0.0001) {
+                                    row.style.outline = '2px dashed #10b981';
+                                    row.style.outlineOffset = '-2px';
+                                    row.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+                                } else if (Math.abs(rowStrike - low) < 0.0001) {
+                                    row.style.outline = '2px dashed #ef4444';
+                                    row.style.outlineOffset = '-2px';
+                                    row.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                                } else {
+                                    if (row.style.outline) {
+                                        row.style.outline = '';
+                                        row.style.outlineOffset = '';
+                                        row.style.backgroundColor = '';
+                                    }
+                                }
+                            }
+                        });
+                    }, 150);
+                }
                 
-                // 根据价格量级动态调整保留的小数位数
                 const priceDecimals = price > 1000 ? 1 : 3;
 
                 resultBox.style.display = 'block';
@@ -196,8 +254,8 @@
                         <div style="color: #60a5fa;"><strong>平值锚定 (ATM):</strong> ${atmStrike.toFixed(priceDecimals)}</div>
                         <div><strong>平值隐波:</strong> 认购(C) ${callIv.toFixed(2)}% ｜ 认沽(P) ${putIv.toFixed(2)}%</div>
                     </div>
-                    <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(priceDecimals)} (-${res.moveDownMoney.toFixed(priceDecimals)})</div>
-                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(priceDecimals)} (+${res.moveUpMoney.toFixed(priceDecimals)})</div>
+                    <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(priceDecimals)} (-${res.moveDownMoney.toFixed(priceDecimals)}) <span style="font-size: 11px; opacity: 0.8; margin-left: 4px;">🎯 锁定: ${targetLowStrike.toFixed(priceDecimals)}</span></div>
+                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(priceDecimals)} (+${res.moveUpMoney.toFixed(priceDecimals)}) <span style="font-size: 11px; opacity: 0.8; margin-left: 4px;">🎯 锁定: ${targetHighStrike.toFixed(priceDecimals)}</span></div>
                 `;
             } catch (err) {
                 resultBox.style.display = 'block';

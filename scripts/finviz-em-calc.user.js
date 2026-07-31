@@ -199,6 +199,48 @@
 
                 const res = calculateExpectedMove(price, callIv, putIv, expiryDateStr, 'us', atmStrike);
 
+                // --- 寻找最接近预期的实际行权价并高亮 ---
+                let interval = 0;
+                let strikes = [];
+                trs.forEach(tr => {
+                    const tds = tr.querySelectorAll('td');
+                    if (tds.length >= 17) {
+                        const s = parseFloat(tds[8].innerText.trim());
+                        if (!isNaN(s)) strikes.push(s);
+                    }
+                });
+                strikes.sort((a,b) => a - b);
+                for(let i=1; i<strikes.length; i++) {
+                    let diff = strikes[i] - strikes[i-1];
+                    if (diff > 0.001) {
+                        interval = interval === 0 ? diff : Math.min(interval, diff);
+                    }
+                }
+                if (interval === 0) interval = price * 0.01; // fallback
+
+                const targetHighStrike = atmStrike + Math.round((res.expectedHigh - atmStrike) / interval) * interval;
+                const targetLowStrike = atmStrike + Math.round((res.expectedLow - atmStrike) / interval) * interval;
+
+                trs.forEach(tr => {
+                    const tds = tr.querySelectorAll('td');
+                    if (tds.length >= 17) {
+                        const strikeVal = parseFloat(tds[8].innerText.trim());
+                        if (!isNaN(strikeVal)) {
+                            // 先清除旧的高亮样式（防重复计算）
+                            tr.style.outline = '';
+                            tr.style.backgroundColor = '';
+                            
+                            if (Math.abs(strikeVal - targetHighStrike) < 0.0001) {
+                                tr.style.outline = '2px dashed #10b981';
+                                tr.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+                            } else if (Math.abs(strikeVal - targetLowStrike) < 0.0001) {
+                                tr.style.outline = '2px dashed #ef4444';
+                                tr.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                            }
+                        }
+                    }
+                });
+
                 resultBox.style.display = 'block';
                 resultBox.innerHTML = `
                     <div style="margin-bottom: 8px; border-bottom: 1px solid #374151; padding-bottom: 8px;">
@@ -207,8 +249,8 @@
                         <div style="color: #60a5fa;"><strong>远期中心点 (ATM):</strong> ${atmStrike.toFixed(2)} (Delta: ${atmCallDelta.toFixed(4)})</div>
                         <div><strong>ATM IV:</strong> C: ${callIv.toFixed(2)}% | P: ${putIv.toFixed(2)}%</div>
                     </div>
-                    <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(2)} (-${res.moveDownMoney.toFixed(2)})</div>
-                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(2)} (+${res.moveUpMoney.toFixed(2)})</div>
+                    <div style="color: #ef4444;"><strong>预期下界:</strong> ${res.expectedLow.toFixed(2)} (-${res.moveDownMoney.toFixed(2)}) <span style="font-size: 11px; opacity: 0.8; margin-left: 4px;">🎯 锁定: ${targetLowStrike.toFixed(2)}</span></div>
+                    <div style="color: #10b981;"><strong>预期上界:</strong> ${res.expectedHigh.toFixed(2)} (+${res.moveUpMoney.toFixed(2)}) <span style="font-size: 11px; opacity: 0.8; margin-left: 4px;">🎯 锁定: ${targetHighStrike.toFixed(2)}</span></div>
                 `;
             } catch (err) {
                 resultBox.style.display = 'block';
