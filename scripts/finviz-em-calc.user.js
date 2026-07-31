@@ -199,7 +199,7 @@
 
                 const res = calculateExpectedMove(price, callIv, putIv, expiryDateStr, 'us', atmStrike);
 
-                // --- 寻找最接近预期且保守(向平值收敛)的实际行权价并高亮 ---
+                // --- 寻找最接近预期的实际行权价并高亮 (保守模式) ---
                 let strikes = [];
                 trs.forEach(tr => {
                     const tds = tr.querySelectorAll('td');
@@ -208,33 +208,23 @@
                         if (!isNaN(s)) strikes.push(s);
                     }
                 });
-                strikes = [...new Set(strikes)].sort((a, b) => a - b);
-                
-                let targetHighStrike = res.expectedHigh;
-                let targetLowStrike = res.expectedLow;
-                
-                if (strikes.length > 0) {
-                    const minS = strikes[0];
-                    const maxS = strikes[strikes.length - 1];
-                    
-                    if (res.expectedHigh >= minS && res.expectedHigh <= maxS) {
-                        const valid = strikes.filter(s => s <= res.expectedHigh);
-                        if (valid.length > 0) targetHighStrike = valid[valid.length - 1];
-                    } else if (res.expectedHigh > maxS) {
-                        let step = strikes.length >= 2 ? strikes[strikes.length-1] - strikes[strikes.length-2] : 0.1;
-                        let ex = maxS;
-                        while (ex <= res.expectedHigh) ex += step;
-                        targetHighStrike = ex - step;
+                strikes.sort((a,b) => a - b);
+
+                // 上界：取第一个大于等于 expectedHigh 的真实行权价
+                let targetHighStrike = strikes[strikes.length - 1];
+                for (let s of strikes) {
+                    if (s >= res.expectedHigh) {
+                        targetHighStrike = s;
+                        break;
                     }
-                    
-                    if (res.expectedLow >= minS && res.expectedLow <= maxS) {
-                        const valid = strikes.filter(s => s >= res.expectedLow);
-                        if (valid.length > 0) targetLowStrike = valid[0];
-                    } else if (res.expectedLow < minS) {
-                        let step = strikes.length >= 2 ? strikes[1] - strikes[0] : 0.1;
-                        let ex = minS;
-                        while (ex >= res.expectedLow) ex -= step;
-                        targetLowStrike = ex + step;
+                }
+
+                // 下界：取第一个小于等于 expectedLow 的真实行权价
+                let targetLowStrike = strikes[0];
+                for (let i = strikes.length - 1; i >= 0; i--) {
+                    if (strikes[i] <= res.expectedLow) {
+                        targetLowStrike = strikes[i];
+                        break;
                     }
                 }
 
@@ -244,6 +234,7 @@
                         const strikeTd = tds[8];
                         const strikeVal = parseFloat(strikeTd.innerText.trim());
                         if (!isNaN(strikeVal)) {
+                            // 先清除旧的高亮样式（防重复计算）
                             strikeTd.style.outline = '';
                             strikeTd.style.backgroundColor = '';
                             

@@ -162,10 +162,12 @@
 
                     const strikeDiff = Math.abs(rowStrike - price);
                     
+                    // 寻找最接近现价的平值期权
                     if (strikeDiff < minStrikeDiff) {
                         minStrikeDiff = strikeDiff;
                         atmStrike = rowStrike;
 
+                        // 提取隐波 (OpenVlab的隐波列带有 .italic 类名，且有 text-[var(--vlab-iv)] 属性)
                         const callIvEl = callGrid.querySelector('.italic');
                         const putIvEl = putGrid.querySelector('.italic');
 
@@ -183,45 +185,48 @@
 
                 const res = calculateExpectedMove(price, callIv, putIv, daysToExpiry);
 
-                // --- 寻找最接近预期且保守(向平值收敛)的实际行权价并高亮 ---
-                let strikes = [];
+                // --- 寻找最接近预期的实际行权价并高亮 (保守模式) ---
+                let detectedInterval = 0;
+                let visibleStrikes = [];
                 rows.forEach(row => {
                     if (row.children.length >= 3) {
                         const s = parseFloat(row.children[1].innerText.trim());
-                        if (!isNaN(s)) strikes.push(s);
+                        if (!isNaN(s)) visibleStrikes.push(s);
                     }
                 });
-                strikes = [...new Set(strikes)].sort((a, b) => a - b);
-                
-                let targetHighStrike = res.expectedHigh;
-                let targetLowStrike = res.expectedLow;
-                
-                if (strikes.length > 0) {
-                    const minS = strikes[0];
-                    const maxS = strikes[strikes.length - 1];
-                    
-                    // 计算上界 (向内收敛，即找小于等于 expectedHigh 的最大行权价)
-                    if (res.expectedHigh >= minS && res.expectedHigh <= maxS) {
-                        const valid = strikes.filter(s => s <= res.expectedHigh);
-                        if (valid.length > 0) targetHighStrike = valid[valid.length - 1];
-                    } else if (res.expectedHigh > maxS) {
-                        let step = strikes.length >= 2 ? strikes[strikes.length-1] - strikes[strikes.length-2] : 0.1;
-                        let ex = maxS;
-                        while (ex <= res.expectedHigh) ex += step;
-                        targetHighStrike = ex - step;
-                    }
-                    
-                    // 计算下界 (向内收敛，即找大于等于 expectedLow 的最小行权价)
-                    if (res.expectedLow >= minS && res.expectedLow <= maxS) {
-                        const valid = strikes.filter(s => s >= res.expectedLow);
-                        if (valid.length > 0) targetLowStrike = valid[0];
-                    } else if (res.expectedLow < minS) {
-                        let step = strikes.length >= 2 ? strikes[1] - strikes[0] : 0.1;
-                        let ex = minS;
-                        while (ex >= res.expectedLow) ex -= step;
-                        targetLowStrike = ex + step;
+                visibleStrikes.sort((a,b) => a - b);
+                for(let i=1; i<visibleStrikes.length; i++) {
+                    let diff = visibleStrikes[i] - visibleStrikes[i-1];
+                    if (diff > 0.001) {
+                        detectedInterval = detectedInterval === 0 ? diff : Math.min(detectedInterval, diff);
                     }
                 }
+
+                function getConservativeStrike(targetPrice, isHigh) {
+                    let interval = detectedInterval || (price * 0.01);
+                    
+                    if (price < 100) { // A股 ETF 期权规则
+                        if (targetPrice <= 3.0) interval = 0.05;
+                        else if (targetPrice <= 5.0) interval = 0.10;
+                        else if (targetPrice <= 10.0) interval = 0.25;
+                        else if (targetPrice <= 20.0) interval = 0.50;
+                        else if (targetPrice <= 50.0) interval = 1.00;
+                        else interval = 2.50;
+                    } else { // 股指期权
+                        if (detectedInterval === 0) interval = 50;
+                    }
+                    
+                    let result;
+                    if (isHigh) {
+                        result = Math.ceil(targetPrice / interval) * interval;
+                    } else {
+                        result = Math.floor(targetPrice / interval) * interval;
+                    }
+                    return parseFloat(result.toFixed(4));
+                }
+
+                const targetHighStrike = getConservativeStrike(res.expectedHigh, true);
+                const targetLowStrike = getConservativeStrike(res.expectedLow, false);
 
                 window.__emCalcHighlight = {
                     high: targetHighStrike,
