@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         预期波动计算器 (严格校验熔断修复版)
+// @name         预期波动计算器 (断点穿透修复版)
 // @namespace    http://tampermonkey.net/
-// @version      1.7
-// @description  修复视图检测逻辑，锚定核心希腊字母，避免缩写导致的误杀熔断
+// @version      2.1
+// @description  修复中间插入行导致的数据截断问题
 // @match        *://finviz.com/stock.ashx*
 // @match        *://finviz.com/stock*
 // @match        *://*.finviz.com/stock*
@@ -58,26 +58,17 @@
         const container = document.createElement('div');
         container.id = 'em-calc-container';
         container.style.cssText = `
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 9999;
-            font-family: Arial, sans-serif;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border-radius: 8px;
-            background: #1e2024;
-            color: #d1d5db;
-            border: 1px solid #374151;
-            width: 280px;
-            overflow: hidden;
+            position: fixed; bottom: 30px; right: 30px; z-index: 9999;
+            font-family: Arial, sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: 8px; background: #1e2024; color: #d1d5db;
+            border: 1px solid #374151; width: 280px; overflow: hidden;
         `;
 
         const header = document.createElement('div');
         header.style.cssText = `
-            padding: 8px 12px; background: #374151; color: #9ca3af; 
-            font-size: 12px; font-weight: bold; cursor: move; 
-            display: flex; justify-content: space-between; align-items: center;
-            user-select: none;
+            padding: 8px 12px; background: #374151; color: #9ca3af;
+            font-size: 12px; font-weight: bold; cursor: move;
+            display: flex; justify-content: space-between; align-items: center; user-select: none;
         `;
         header.innerHTML = `<span>预期波动计算器</span><span id="em-calc-toggle" style="cursor:pointer; padding: 0 4px;" title="展开/折叠">□</span>`;
 
@@ -98,12 +89,10 @@
             currentY = e.clientY - initialY;
             xOffset = currentX;
             yOffset = currentY;
-            container.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+            container.style.transform = \`translate3d(\${currentX}px, \${currentY}px, 0)\`;
         });
 
-        document.addEventListener('mouseup', () => {
-            isDragging = false;
-        });
+        document.addEventListener('mouseup', () => { isDragging = false; });
 
         const contentBox = document.createElement('div');
         contentBox.id = 'em-calc-content';
@@ -122,15 +111,8 @@
         const button = document.createElement('button');
         button.innerText = '计算预期波动';
         button.style.cssText = `
-            width: 100%;
-            padding: 8px 12px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            margin-bottom: 10px;
+            width: 100%; padding: 8px 12px; background: #2563eb; color: white;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 10px;
         `;
 
         const resultBox = document.createElement('div');
@@ -139,10 +121,36 @@
 
         button.addEventListener('click', () => {
             try {
-                // 【修复核心】：锚定期权独有的多个希腊字母特征，防范页面文案缩写
-                const pageText = document.body.innerText;
-                if (!pageText.includes("Delta") || !pageText.includes("Gamma") || !pageText.includes("Vega")) {
-                    throw new Error("当前处于 'Prices' 视图无法获取数据，请在期权链上方点击切换到 'Volatility & Greeks' 选项卡！");
+                const rows = document.querySelectorAll('tr');
+                let strikeIdx = -1, callIvIdx = -1, callDeltaIdx = -1, putIvIdx = -1;
+                let dataRows = [];
+
+                for (let i = 0; i < rows.length; i++) {
+                    const cells = Array.from(rows[i].querySelectorAll('td, th')).map(c => c.textContent.trim());
+                    const sIdx = cells.findIndex(c => c.includes('Strike'));
+
+                    if (sIdx !== -1) {
+                        strikeIdx = sIdx;
+                        callIvIdx = cells.indexOf('IV');
+                        callDeltaIdx = cells.indexOf('Delta');
+                        putIvIdx = cells.indexOf('IV', strikeIdx);
+
+                        if (strikeIdx !== -1 && callIvIdx !== -1 && callDeltaIdx !== -1 && putIvIdx !== -1) {
+                            const baselineLength = cells.length;
+                            for (let j = i + 1; j < rows.length; j++) {
+                                const dataCells = rows[j].querySelectorAll('td, th');
+                                // 【核心修复】：移除 break，改用静默跳过机制，强行穿透中间的“现价隔离带”
+                                if (dataCells.length === baselineLength) {
+                                    dataRows.push(dataCells);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if (strikeIdx === -1 || callIvIdx === -1 || callDeltaIdx === -1 || putIvIdx === -1) {
+                    throw new Error("当前处于 'Prices' 视图无法获取完整数据，请在期权链上方点击切换到 'Volatility & Greeks' 选项卡！");
                 }
 
                 const priceMatch = document.body.innerText.match(/Last Close\s*(\d+\.\d+)/);
@@ -160,30 +168,20 @@
                 if (!month || !day || !year) throw new Error(`日期格式解析失败: ${rawExpiry}`);
                 const expiryDateStr = `${year}${month}${day}`;
 
-                let atmStrike = 0;
-                let callIv = 0;
-                let putIv = 0;
-                let atmCallDelta = 0;
-                let minDeltaDiff = Infinity;
+                let atmStrike = 0, callIv = 0, putIv = 0, atmCallDelta = 0, minDeltaDiff = Infinity;
 
-                const trs = document.querySelectorAll('tr');
-                trs.forEach(tr => {
-                    const tds = tr.querySelectorAll('td');
-                    if (tds.length >= 17) {
-                        const strikeText = tds[8].innerText.trim();
-                        const strikeVal = parseFloat(strikeText);
-                        const callDeltaText = tds[2].innerText.trim();
-                        const currentCallDelta = parseFloat(callDeltaText);
+                dataRows.forEach(tds => {
+                    const strikeVal = parseFloat(tds[strikeIdx].textContent.trim());
+                    const currentCallDelta = parseFloat(tds[callDeltaIdx].textContent.trim());
 
-                        if (!isNaN(strikeVal) && !isNaN(currentCallDelta)) {
-                            const deltaDiff = Math.abs(currentCallDelta - 0.5);
-                            if (deltaDiff < minDeltaDiff) {
-                                minDeltaDiff = deltaDiff;
-                                atmStrike = strikeVal;
-                                atmCallDelta = currentCallDelta;
-                                callIv = parseFloat(tds[1].innerText.replace('%', ''));
-                                putIv = parseFloat(tds[11].innerText.replace('%', ''));
-                            }
+                    if (!isNaN(strikeVal) && !isNaN(currentCallDelta)) {
+                        const deltaDiff = Math.abs(currentCallDelta - 0.5);
+                        if (deltaDiff < minDeltaDiff) {
+                            minDeltaDiff = deltaDiff;
+                            atmStrike = strikeVal;
+                            atmCallDelta = currentCallDelta;
+                            callIv = parseFloat(tds[callIvIdx].textContent.replace('%', ''));
+                            putIv = parseFloat(tds[putIvIdx].textContent.replace('%', ''));
                         }
                     }
                 });
@@ -199,18 +197,13 @@
 
                 const res = calculateExpectedMove(price, callIv, putIv, expiryDateStr, 'us', atmStrike);
 
-                // --- 寻找最接近预期的实际行权价并高亮 (保守模式) ---
                 let strikes = [];
-                trs.forEach(tr => {
-                    const tds = tr.querySelectorAll('td');
-                    if (tds.length >= 17) {
-                        const s = parseFloat(tds[8].innerText.trim());
-                        if (!isNaN(s)) strikes.push(s);
-                    }
+                dataRows.forEach(tds => {
+                    const s = parseFloat(tds[strikeIdx].textContent.trim());
+                    if (!isNaN(s)) strikes.push(s);
                 });
                 strikes.sort((a,b) => a - b);
 
-                // 上界：取第一个大于等于 expectedHigh 的真实行权价
                 let targetHighStrike = strikes[strikes.length - 1];
                 for (let s of strikes) {
                     if (s >= res.expectedHigh) {
@@ -219,7 +212,6 @@
                     }
                 }
 
-                // 下界：取第一个小于等于 expectedLow 的真实行权价
                 let targetLowStrike = strikes[0];
                 for (let i = strikes.length - 1; i >= 0; i--) {
                     if (strikes[i] <= res.expectedLow) {
@@ -228,23 +220,19 @@
                     }
                 }
 
-                trs.forEach(tr => {
-                    const tds = tr.querySelectorAll('td');
-                    if (tds.length >= 17) {
-                        const strikeTd = tds[8];
-                        const strikeVal = parseFloat(strikeTd.innerText.trim());
-                        if (!isNaN(strikeVal)) {
-                            // 先清除旧的高亮样式（防重复计算）
-                            strikeTd.style.outline = '';
-                            strikeTd.style.backgroundColor = '';
-                            
-                            if (Math.abs(strikeVal - targetHighStrike) < 0.0001) {
-                                strikeTd.style.outline = '2px solid #10b981';
-                                strikeTd.style.outlineOffset = '-2px';
-                            } else if (Math.abs(strikeVal - targetLowStrike) < 0.0001) {
-                                strikeTd.style.outline = '2px solid #ef4444';
-                                strikeTd.style.outlineOffset = '-2px';
-                            }
+                dataRows.forEach(tds => {
+                    const strikeTd = tds[strikeIdx];
+                    const strikeVal = parseFloat(strikeTd.textContent.trim());
+                    if (!isNaN(strikeVal)) {
+                        strikeTd.style.outline = '';
+                        strikeTd.style.backgroundColor = '';
+
+                        if (Math.abs(strikeVal - targetHighStrike) < 0.0001) {
+                            strikeTd.style.outline = '2px solid #10b981';
+                            strikeTd.style.outlineOffset = '-2px';
+                        } else if (Math.abs(strikeVal - targetLowStrike) < 0.0001) {
+                            strikeTd.style.outline = '2px solid #ef4444';
+                            strikeTd.style.outlineOffset = '-2px';
                         }
                     }
                 });
